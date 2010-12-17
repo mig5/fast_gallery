@@ -1,0 +1,193 @@
+<?php
+// $Id: fast_gallery.install,v 1.23 2008/09/17 10:11:26 rapsli Exp $
+
+/**
+ * @author Raphael Schär - www.schaerwebdesign.ch
+ */
+
+//Set this variable to false if you don't want to register your module
+//I'm just curious to see how many people actually use this module
+//the following data is being registered:
+// * domain
+// * a timestamp
+// * what kind of module
+// there are no IPs of any kind being registered, so you don't have to 
+// worry about misuse of data (hey, I'm not Google)
+
+
+/**
+ * Installation file for Fast Gallery
+ */
+
+function fast_gallery_install() {
+  drupal_install_schema('fast_gallery');
+//  fast_gallery_set_icpresets();
+}
+
+
+
+function fast_gallery_uninstall() {
+//  db_query("DROP TABLE {fast_gallery}");
+//  db_query("DROP TABLE {fast_gallery_exif}");
+
+  variable_del('fast_gallery_path');
+  
+  drupal_uninstall_schema('fast_gallery');
+  
+  $preset_id = variable_get("fast_gallery_ic_preset_thumb",0);
+  if(module_exists('imagecache')){
+    imagecache_preset_delete(array('presetid' =>  $preset_id));
+  }
+  variable_del("fast_gallery_ic_preset_thumb");
+  $preset_id = variable_get("fast_gallery_ic_preset_big",0);
+  if(module_exists('imagecache')){
+    imagecache_preset_delete(array('presetid' =>  $preset_id));
+  }
+  variable_del("fast_gallery_ic_preset_big");
+  
+  variable_del("fast_gallery_clear");
+  variable_del("fast_gallery_direction");
+  variable_del("fast_gallery_display_folder");
+  variable_del("fast_gallery_flush_thumbs");
+  variable_del("fast_gallery_folder_direction");
+  variable_del("fast_gallery_hierarchy");
+  variable_del("fast_gallery_ic");
+  variable_del("fast_gallery_ic_big");
+  variable_del("fast_gallery_js_framework");
+  variable_del("fast_gallery_nr_per_page");
+  variable_del("fast_gallery_path_absolut");
+  variable_del("fast_gallery_path_option");
+  variable_del("fast_gallery_presets_install");
+  variable_del("fast_gallery_rescan");
+  variable_del("fast_gallery_sort");
+  variable_del("fast_gallery_sort_folder");
+  variable_del("fast_gallery_update_mode");
+  
+  fast_gallery_unregister();
+}
+
+function fast_gallery_schema() {
+  $schema['fast_gallery'] = array (
+    'description' => t('Stores the pictures and their path'),
+    'fields' => array (
+      'gid' => array (
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => t('The Picture ID of the field, defined by the database.'),
+
+        
+      ),
+      'path' => array (
+        'type' => 'varchar',
+        'length' => '255',
+        'default' => '',
+        'not null' => TRUE,
+        'description' => t('The path to an image'),
+
+        
+      ),
+      'folder' => array (
+        'type' => 'varchar',
+        'length' => '255',
+        'default' => '',
+        'not null' => TRUE,
+        'description' => t('The folder, where an image is in.'),
+
+        
+      ),
+      'parent' => array (
+        'type' => 'varchar',
+        'length' => '255',
+        'default' => '',
+        'not null' => FALSE,
+        'description' => t('The parent folder of an image -> for the hierarchy'),
+
+        
+      ),
+      
+      'folderimage' =>  array(
+        'type'  =>  'int',
+        'length'    =>  '1',
+        'default'   => 0,
+        'not null'  =>  TRUE,
+        'description'   =>  t('Mark folderimages with this flag')
+      ),
+      
+    ),
+    'primary key' => array (
+      'gid'
+    ),
+
+    
+  );
+  $schema['fast_gallery_exif'] = array (
+    'description' => t('Stores exif files for the pictures'),
+    'fields' => array (
+      'eid' => array (
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => t('The Exif ID of the field, defined by the database.'),
+        'no export' => TRUE,
+
+        
+      ),
+      'gid' => array (
+        'type' => 'int',
+        'length' => '11',
+        'default' => '0',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => t('The id for the picture in fast gallery pictures'),
+
+        
+      ),
+      'field' => array (
+        'type' => 'varchar',
+        'length' => '255',
+        'default' => '',
+        'not null' => TRUE,
+        'description' => t('The name of the exif Field'),
+
+        
+      ),
+      'value' => array (
+        'type' => 'varchar',
+        'length' => '255',
+        'default' => '',
+        'not null' => TRUE,
+        'description' => t('The value of the exif field'),
+
+        
+      ),
+
+      
+    ),
+    'primary key' => array (
+      'eid'
+    ),
+
+    
+  );
+  return $schema;
+}
+
+/**
+ * this is a lil hack -> sorry. I'll to a better job next time.
+ */
+function fast_gallery_update_1() {
+  $ar_ret = array ();
+  if(db_table_exists('{fast_gallery}')){
+    db_query("DROP TABLE {fast_gallery}");  
+  }
+  if(db_table_exists('{fast_gallery_exif}')){
+    db_query("DROP TABLE {fast_gallery_exif}");  
+  }
+  drupal_install_schema('fast_gallery');
+  return $ar_ret;
+}
+
+function fast_gallery_update_2(){
+  db_query("ALTER TABLE {fast_gallery} ADD folderimage TINYINT( 1 ) NOT NULL DEFAULT '0';");
+}

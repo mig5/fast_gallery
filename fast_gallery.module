@@ -1,0 +1,1056 @@
+<?php
+
+
+// $Id: fast_gallery.module,v 1.45 2008/09/17 10:11:26 rapsli Exp $
+
+//This module is sponsered by Schär Webdesign: www.schaerwebdesign.ch or
+//the drupal related blog: www.rapsli.ch
+
+/**
+ * @file Fast Gallery allows you to build galleries based on your file 
+ * system with folders and subfolders.
+ * 
+ * @author Raphael Schär - www.schaerwebdesign.ch
+ * 
+ */
+
+define("FAST_GALLERY_VERSION","2.1");
+
+/**
+ * implementation of hook_perm
+ */
+function fast_gallery_perm() {
+  return array (
+    "access fast gallery","administer fast gallery"
+  );
+}
+
+function fast_gallery_disable(){
+  fast_gallery_unregister();
+}
+
+function fast_gallery_enable(){
+  fast_gallery_register();
+}
+
+/**
+ * implementation of hook_menu
+ */
+function fast_gallery_menu() {
+  include_once (drupal_get_path('module', 'fast_gallery') . "/fast_gallery.class.php");
+
+  $items = array ();
+  
+  $items['admin/settings/fast_gallery'] = array (
+    'title' => t('Gallery'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array (
+      'fast_gallery_admin'
+    ),
+    'access arguments' => array (
+      'administer fast gallery'
+    ),
+    'access callback' => 'user_access',
+    'type' => MENU_NORMAL_ITEM,
+    'weight'    => -10,
+    
+  );
+  
+  $items['admin/settings/fast_gallery/general'] = array (
+    'title' => t('Gallery'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array (
+      'fast_gallery_admin'
+    ),
+    'access arguments' => array (
+      'administer fast gallery'
+    ),
+    'access callback' => 'user_access',
+    'type' => MENU_LOCAL_TASK,
+    'weight'    => -10,
+    
+  );
+  
+
+  $items['admin/settings/fast_gallery/advanced'] = array (
+    'title' => t('Advanced Settings'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array (
+      'fast_gallery_admin_advanced_form'
+    ),
+    'access arguments' => array (
+      'administer fast gallery'
+    ),
+    'access callback' => 'user_access',
+    'type' => MENU_LOCAL_TASK,
+
+    
+  );
+  
+  $items['admin/settings/fast_gallery/permissions'] = array(
+    'title' =>  t('Permissions'),
+    'page callback' =>  'fast_gallery_admin_permissions',
+    'type'  =>  MENU_LOCAL_TASK,
+    'access arguments' => array (
+      'administer fast gallery'
+    ),
+    'access callback' => 'user_access',
+  );
+
+  $items['fast_gallery'] = array (
+    'title' => t('Gallery'),
+    'page callback' => 'fast_gallery_page',
+    'access arguments' => array (
+      'access fast gallery'
+    ),
+    'access callback' => 'user_access',
+    'type' => MENU_NORMAL_ITEM,
+
+    
+  );
+
+  $items['fast_gallery/toggle_folder_caption'] = array(
+    'page callback'     =>  'fast_gallery_toggle_folder_image',
+    'access arguments'  =>  array('administer fast gallery'),
+    'access callback' => 'user_access',
+    'type'              =>  MENU_CALLBACK,
+    'page arguments'    =>  array(
+        arg(2),arg(3),arg(4)
+    ),
+  );  
+  // AJAX paths
+
+
+  $items['fast_gallery/clear'] = array (
+    'page callback' => 'fast_gallery_js_clear',
+    'type' => MENU_CALLBACK,
+    'access arguments' => array (
+      'administer fast gallery'
+    ),
+    'access callback' => 'user_access',
+    
+  );
+  $items['fast_gallery/rescan'] = array (
+    'page callback' => 'fast_gallery_js_rescan',
+    'type' => MENU_CALLBACK,
+    'access arguments' => array (
+      'administer fast gallery'
+    ),
+    'access callback' => 'user_access',
+    
+  );
+  $items['fast_gallery/flush'] = array (
+    'page callback' => 'fast_gallery_js_flush',
+    'type' => MENU_CALLBACK,
+    'access arguments' => array (
+      'administer fast gallery'
+    ),
+    'access callback' => 'user_access',
+    
+  );
+  $items['fast_gallery/presets_install'] = array (
+    'page callback' => 'fast_gallery_set_icpresets',
+    'type' => MENU_CALLBACK,
+    'access arguments' => array (
+      'administer fast gallery'
+    ),
+    'access callback' => 'user_access',
+    
+  );
+  $items['fast_gallery/unregister'] = array (
+    'page callback' => 'fast_gallery_unregister',
+    'type' => MENU_CALLBACK,
+    'access arguments' => array (
+      'administer fast gallery'
+    ),
+    'access callback' => 'user_access',
+    
+  );
+  
+  return $items;
+}
+
+/**
+ * Just the Callback function for the admin settings
+ */
+function fast_gallery_admin() {
+  drupal_set_title('General Fast Gallery settings');
+  include_once (drupal_get_path('module', 'fast_gallery') . "/fast_gallery.class.php");
+  $fg = FastGallery :: getInstance();
+  $path_options_tmp = $fg->getAllFolders(file_directory_path() . '/');
+  $path_options = array ();
+
+  $res = $fg->flattenAllFolders($path_options_tmp);
+  $path_options = explode("%&", $res);
+  array_pop($path_options);
+
+  $path_options = $fg->prepareListOfFolders($path_options);
+
+  $form['fast_gallery_path_option'] = array (
+    '#type' => 'select',
+    '#options' => $path_options,
+    '#default_value' => variable_get('fast_gallery_path_option', -1),
+    '#description' => t('This is a list of your default file folder. Please choose the folder you want to use' .
+    ' for your album. If you want to choose a folder manually, because it\'s not a folder of the default path, ' .
+    'set the dropdown to "enter path manually" and then enter the path manually below.<br/>' .
+    'If you change the path, after already having used the Gallery you\'ll need to run the ' .
+    'cron job again and reindex the whole gallery.'),
+
+    
+  );
+
+  $form['fast_gallery_path'] = array (
+    '#type' => 'textfield',
+    '#title' => t('Path to Gallery'),
+    '#default_value' => variable_get('fast_gallery_path', ""),
+    '#description' => t("The path to the pics from which an album should be created. " .
+    "<em>Please ensure, that the path does end with /</em>"),
+
+    
+  );
+
+  $form['fast_gallery_nr_per_page'] = array (
+    '#type' => 'textfield',
+    '#title' => t('Amount of images per page'),
+    '#default_value' => variable_get('fast_gallery_nr_per_page', 30),
+    '#description' => t('How many images to be displayed per page'),
+
+    
+  );
+  $form['fast_gallery_hierarchy'] = array (
+    '#type' => 'checkbox',
+    '#title' => t('Hierarchy'),
+    '#default_value' => variable_get('fast_gallery_hierarchy', 1),
+    '#description' => t('Choose if you want to display a flat gallery or with the folders.'),
+
+    
+  );
+  
+  $form['fast_gallery_register'] = array (
+    '#type' => 'checkbox',
+    '#title' => t('Register with rapsli.ch'),
+    '#default_value' => variable_get('fast_gallery_register', 0),
+    '#description' => t('If you checked, your site will be registered with www.rapsli.ch. The only information ' .
+        'that is collected is the URL of you site, so it can be used as showcase for the fast gallery module.'),
+
+    
+  );
+  $form['fast_gallery_unregister_btt'] = array (
+    '#type' => 'button',
+    '#value' => t('Unregister this site'),
+    '#ahah' => array (
+      'path' => 'fast_gallery/unregister',
+      'method' => 'replace',
+      'effect' => 'fade',
+      'progress' => array (
+        'type' => 'bar',
+        'message' => t('Unregistering')
+      ),
+      'wrapper' => 'attach-wrapper',
+
+      
+    )
+  );
+  
+
+  $js_framework_options = array (
+    0 => t('Thickbox'),
+    1 => t('Lightbox2'),
+
+    
+  );
+
+  $form['fast_gallery_js_framework'] = array (
+    '#type' => 'select',
+    '#title' => t('Choose your Javascript framework'),
+    '#options' => $js_framework_options,
+    '#default_value' => variable_get('fast_gallery_js_framework', 0),
+    '#description' => t('Lightbox version is still very bugy!'),
+
+    
+  );
+
+  $options = array (
+    0 => t('Manual'),
+    1 => t('Automatic')
+  );
+  $form['fast_gallery_update_mode'] = array (
+    '#type' => 'radios',
+    '#title' => t('Update mode'),
+    '#options' => $options,
+    '#default_value' => variable_get('fast_gallery_update_mode', 1),
+    '#description' => t('If you choose automatically, the gallery get\'s updated with every cron job.'),
+
+    
+  );
+
+  $ic_link = l('Imagecache', 'admin/build/imagecache');
+  $form['fast_gallery_operations'] = array (
+    '#type' => 'fieldset',
+    '#title' => t('Some operations'),
+    '#collapsible' => TRUE,
+    '#collapsed' => FALSE,
+    '#tree' => FALSE,
+    '#description' => '',
+
+    
+  );
+
+  $form['fast_gallery_operations']['fast_gallery_clear'] = array (
+    '#type' => 'button',
+    '#value' => t('Clear DB'),
+    '#description' => t('Watch out! Rebuilding the DB can take some time.'),
+    '#ahah' => array (
+      'path' => 'fast_gallery/clear',
+      'method' => 'replace',
+      'effect' => 'fade',
+      'progress' => array (
+        'type' => 'bar',
+        'message' => t('Clearing DB')
+      ),
+      'wrapper' => 'attach-wrapper',
+
+      
+    )
+  );
+  $form['fast_gallery_operations']['fast_gallery_rescan'] = array (
+    '#type' => 'button',
+    '#value' => t('Rescan'),
+    '#ahah' => array (
+      'path' => 'fast_gallery/rescan',
+      'method' => 'replace',
+      'effect' => 'fade',
+      'progress' => array (
+        'type' => 'bar',
+        'message' => t('Scan for new pictures...')
+      ),
+      'wrapper' => 'attach-wrapper',
+
+      
+    )
+  );
+  if (variable_get('fast_gallery_ic', "<none>") == '<none>') {
+    $form['fast_gallery_operations']['fast_gallery_flush_thumbs'] = array (
+      '#type' => 'button',
+      '#value' => t('Flush Thumbs'),
+      '#ahah' => array (
+        'path' => 'fast_gallery/flush',
+        'method' => 'replace',
+        'effect' => 'fade',
+        'progress' => array (
+          'type' => 'bar',
+          'message' => t('Flushing thumbs')
+        ),
+        'wrapper' => 'attach-wrapper',
+
+        
+      )
+    );
+  }
+
+  return system_settings_form($form);
+}
+
+/**
+ * give the user some more options to choose from
+ */
+function fast_gallery_admin_advanced_form() {
+
+  drupal_set_title('Advanced Fast Gallery settings');
+  if (module_exists('imagecache')) {
+    $arICPresetts = imagecache_presets();
+    $optionPresets = array ();
+    foreach ($arICPresetts as $value) {
+      $optionPresets[$value['presetname']] = $value['presetname'];
+    }
+    $optionPresetsBig = $optionPresets;
+  }
+  $optionPresets['<none>'] = '<none>';
+  $optionPresetsBig['<none>'] = '<none>';
+
+  $ic_link = l('Imagecache', 'admin/build/imagecache');
+  $form['ic'] = array (
+    '#type' => 'fieldset',
+    '#title' => t('ImageCache'),
+    '#description' => t(''),
+    '#collapsible' => TRUE,
+    '#collapsed' => FALSE,
+    '#description' => t('If you Install Imagecache (IC) Presets, be aware' .
+    ' that this function is not bullet proof. Also if you hit this button multiple times ' .
+    'you\'ll get multiple presets with the same name! So please be sure to still have a look ' .
+    'at the Imagecache preset page: ') . $ic_link,
+
+    
+  );
+
+  $form['ic']['fast_gallery_ic'] = array (
+    '#type' => 'select',
+    '#title' => t('Fill in the imagecache preset name for the thumbs.'),
+    '#options' => $optionPresets,
+    '#default_value' => variable_get('fast_gallery_ic', "<none>"),
+    '#description' => t('Which imagecache preset should be applied to pictures in the fast gallery overview?'),
+
+    
+  );
+
+  $form['ic']['fast_gallery_ic_big'] = array (
+    '#type' => 'select',
+    '#title' => t('Fill in the imagecache preset name Full display'),
+    '#default_value' => variable_get('fast_gallery_ic_big', '<none>'),
+    '#options' => $optionPresetsBig,
+    '#description' => t('Which imagecache preset should be applied to pictures when a user clicks on a picture? ' .
+    'Type <none> if you just want to use the original image'),
+
+    
+  );
+
+  $form['ic']['fast_gallery_presets_install'] = array (
+    '#type' => 'button',
+    '#value' => t('Install IC Presets'),
+    '#ahah' => array (
+      'path' => 'fast_gallery/presets_install',
+      'method' => 'replace',
+      'effect' => 'fade',
+      'progress' => array (
+        'type' => 'bar',
+        'message' => t('Installing imagecache presets...')
+      ),
+      'wrapper' => 'attach-wrapper',
+
+      
+    )
+  );
+
+  $option = array (
+    'rand' => t('Random'),
+    'path' => t('Name'),
+    'date' => t('Date taken'),
+    'filec'=> t('File created'),
+  );
+
+  $form['fg_advanced'] = array (
+    '#type' => 'fieldset',
+    '#title' => t('Sorting'),
+    '#description' => t('These options are still very experimental. Feel free to use and' .
+    ' improve them. Me and lots of other users will be very glad!'),
+    '#collapsible' => TRUE,
+    '#collapsed' => FALSE,
+
+    
+  );
+  $form['fg_advanced']['fast_gallery_sort'] = array (
+    '#type' => 'select',
+    '#title' => t('Sort by'),
+    '#options' => $option,
+    '#default_value' => variable_get('fast_gallery_sort', 'date'),
+
+    
+  );
+
+  $optionSorting = array (
+    'asc' => t('Ascending'),
+    'desc' => t('Descending')
+  );
+  $form['fg_advanced']['fast_gallery_direction'] = array (
+    '#type' => 'select',
+    '#title' => t('Ascending/Descending'),
+    '#options' => $optionSorting,
+    '#default_value' => variable_get('fast_gallery_direction', 'asc'),
+
+    
+  );
+  
+    $form['fg_folder_sorting'] = array (
+    '#type' => 'fieldset',
+    '#title' => t('Sorting Folders'),
+    '#description' => t('The first picture of the folder is taken as folder caption -> this is going to be' .
+        ' the date that counts as sorting criteria.'),
+    '#collapsible' => TRUE,
+    '#collapsed' => FALSE,
+
+    
+  );
+  
+  $option = array('date'=> t('Date taken'));
+  $form['fg_folder_sorting']['fast_gallery_sort_folder'] = array (
+    '#type' => 'select',
+    '#title' => t('Sort by'),
+    '#options' => $option,
+    '#default_value' => variable_get('fast_gallery_sort_folder', 'date'),
+
+    
+  );
+
+  $form['fg_folder_sorting']['fast_gallery_folder_direction'] = array (
+    '#type' => 'select',
+    '#title' => t('Ascending/Descending'),
+    '#options' => $optionSorting,
+    '#default_value' => variable_get('fast_gallery_folder_direction', 'asc'),
+
+    
+  );
+
+  $form['fast_gallery_display_folder'] = array (
+    '#type' => 'checkbox',
+    '#title' => t('If checked, folder will only be displayed as textlinks'),
+    '#default_value' => variable_get('fast_gallery_display_folder', 0),
+
+    
+  );
+
+  $form['fg_advanced']['submit'] = array (
+    '#type' => 'submit',
+    '#value' => t('Submit'),
+
+    
+  );
+  return system_settings_form($form);
+}
+
+function fast_gallery_admin_permissions(){
+  drupal_set_title('Fast Gallery permission settings');
+  include_once (drupal_get_path('module', 'fast_gallery') . "/fast_gallery.class.php");
+  $fg = FastGallery :: getInstance();
+  
+  $folder_tree = $fg->getAllFolders(variable_get('fast_gallery_path_absolut', 'sites/default/files/'));
+  $out = '';
+  $out .= '<ul>';
+    $out .= theme('fast_gallery_folder_tree',$folder_tree);
+  $out .= '</ul>';
+  return $out;
+}
+
+function theme_fast_gallery_folder_tree($ar_tree){
+  return t('Feature needs to be implemented first');
+}
+
+function fast_gallery_admin_validate($form, $elements) {
+  if (!is_numeric($elements['values']['fast_gallery_nr_per_page'])) {
+    form_error($form['fast_gallery_nr_per_page'], t('This field has to be numeric'));
+  }
+
+  $path = $elements['values']['fast_gallery_path'];
+  if (!file_exists($path) && $elements['value']['fast_gallery_path_option'] == -1) {
+    form_error($form['fast_gallery_path'], t('This folder doesn\'t exist.'));
+  }
+  $last_token = substr($path, count($last_token) - 1, 1);
+  if ($last_token != '/') {
+    $path .= '/';
+  }
+  $elements['values']['fast_gallery_path'] = $path;
+}
+
+
+/**
+ * We are going to display the whole gallery here
+ * This is the callback function from hook_menu
+ */
+function fast_gallery_page() {
+  $path = drupal_get_path('module', 'fast_gallery');
+  include_once ($path . "/fast_gallery.class.php");
+
+  $fg = FastGallery :: getInstance();
+  $fg->setAbsolutPath();
+
+  drupal_add_css($path . '/fast_gallery.css', 'module', 'all', FALSE);
+
+  $ar_path = arg();
+  if (count($ar_path) == 1) {
+    $folder = $fg->getFolderInPath(variable_get('fast_gallery_path_absolut', 'sites/default/files/'));
+  } else {
+    $folder = $ar_path[count($ar_path) - 1];
+  }
+  if (variable_get('fast_gallery_hierarchy', 1)) {
+    $ar_pics = $fg->getPicsHierarchy($folder);
+
+  } else {
+    $ar_pics = $fg->getPicsFlat();
+  }
+  if (count($ar_pics) < 1) { //if there are no pics found in the folder
+    return t('No pictures found. First set your ' . l('configuration', 'admin/settings/fast_gallery/general') .
+    ' and then make sure to run the ' . l('Cronjob', 'admin/reports/status/run-cron') . '.');
+  }
+
+  return theme('fast_gallery', $ar_pics, arg());
+}
+
+/**
+ * Implementation of hook_cron.
+ * we want to set a cron job to keep the gallery always up to date.
+ */
+function fast_gallery_cron() {
+  if (variable_get('fast_gallery_update_mode', 1)) {
+    include_once (drupal_get_path('module', 'fast_gallery') . "/fast_gallery.class.php");
+    $fg = FastGallery :: getInstance();
+    $fg->rescanGallery();
+  }
+}
+
+/**
+ * Implementation of hook_theme().
+ */
+function fast_gallery_theme() {
+  return array (
+    'fast_gallery' => array (
+      'arguments' => array (),
+
+      
+    ),
+    'fast_gallery_thickbox_code' => array (
+      'arguments' => array (),
+
+      
+    ),
+    'fast_gallery_lightbox_code' => array (
+      'arguments' => array (),
+
+      
+    ),
+    'fast_gallery_display_block'    => array(
+        'arguments' =>  array(),
+    ),
+
+    'fast_gallery_thumb'    =>  array(
+        'arguments' =>  array(),
+    ),
+    
+    'fast_gallery_folder_tree'  => array(
+        'arguments' =>  array(),
+    ),
+    
+  );
+}
+
+/**
+ * Callback function for clearing the gallery
+ */
+function fast_gallery_js_clear() {
+  include_once (drupal_get_path('module', 'fast_gallery') . "/fast_gallery.class.php");
+  $fg = FastGallery :: getInstance();
+  variable_set('fast_gallery_path_option', check_plain($_POST['fast_gallery_path_option']));
+  $fg->clearGallery();
+
+  drupal_json(array (
+    'status' => TRUE,
+    'data' => t('Cleared Fast Gallery.')
+  ));
+}
+
+/**
+ * This is the callback function to refresh the fast gallery again
+ */
+function fast_gallery_js_rescan() {
+  include_once (drupal_get_path('module', 'fast_gallery') . "/fast_gallery.class.php");
+  $fg = FastGallery :: getInstance();
+  $fg->rescanGallery();
+  drupal_json(array (
+    'status' => TRUE,
+    'data' => t('Updated Fast Gallery')
+  ));
+}
+
+/**
+ * Just some callback function that is going to flush the internal cache
+ */
+function fast_gallery_js_flush() {
+  include_once (drupal_get_path('module', 'fast_gallery') . "/fast_gallery.cache.class.php");
+  $cache = FastGalleryCache :: getInstance();
+  $path = variable_get('fast_gallery_path_absolut', 'sites/default/files/');
+  $cache->flushThumbs($path, TRUE);
+  drupal_json('ok');
+}
+
+/**
+ * Theme the output using lightbox
+ */
+function theme_fast_gallery_lightbox_code($img_path, $exif, $value) {
+  include_once (drupal_get_path('module', 'fast_gallery') . "/fast_gallery.cache.class.php");
+  $cache = FastGalleryCache :: getInstance();
+
+  $output = '';
+  $ar_tmp = explode("/", $value->path);
+  $title = $ar_tmp[count($ar_tmp) - 1] . ' - ' . $exif['dateTaken'] . ' - ' . $exif['title'];
+  $img = theme('fast_gallery_thumb',$value->path);
+  if (variable_get('clean_url', 0) == 0) {
+    $link = '<a href="' . $img_path . '" class="lightbox" rel="lightshow[fast_gallery]">' .
+    $img . '</a>';
+  } else {
+    $link = l($img, $img_path, array (
+      'html' => TRUE,
+      'attributes' => array (
+        'class' => 'lightbox',
+        'rel' => 'lightshow[fast_gallery]',
+        'title' => $title,
+        
+        
+      )
+    ));
+  }
+  $output .= '<div class="single-image">';
+  $output .= $link;
+  $output .= '</div>';
+  return $output;
+}
+
+/**
+ * themeing the code for thickbox
+ */
+function theme_fast_gallery_thickbox_code($img_path, $exif, $value) {
+  $output = '';
+  $ar_tmp = explode("/", $value->path);
+
+  $title = $ar_tmp[count($ar_tmp) - 1] . ' - ' . $exif['dateTaken'] . ' - ' . $exif['title'];
+  $img = null;
+  
+  $img = theme('fast_gallery_thumb',$value->path);
+    if (variable_get('clean_url', 0) == 0) {
+    $link = '<a href="' . $img_path . '" class="thickbox" rel="frontpage">' .
+    $img . '</a>';
+  } else {
+    $link = l($img, $img_path, array (
+      'html' => TRUE,
+      'attributes' => array (
+        'class' => 'thickbox',
+        'rel' => 'frontpage',
+        'title' => $title,
+
+        
+      )
+    ));
+  }
+  $output .= '<div class="single-image">';
+  $output .= $link._fast_gallery_add_select_folder_image_code($value);
+  $output .= '</div>';
+  return $output;
+}
+
+/**
+ * Just some helper function to generate the code
+ * We check if there the current image is marked as folder image
+ * if so, we are going to make that visible
+ * further we generat the link to toggle the is folderimage.
+ * @param Object $value - Contains information about an image
+ */
+function _fast_gallery_add_select_folder_image_code($value){
+    if(!user_access('administer fast gallery')){
+      return '';
+    }
+    $html = '';
+    $sql = "SELECT folderimage FROM {fast_gallery} WHERE path = '%s'";
+    $row = db_fetch_object(db_query($sql,$value->path));
+    
+    $cur_path = implode("/",arg());
+    if($row->folderimage){
+        $link = l('','fast_gallery/toggle_folder_caption/0/'.
+                str_replace("/","!",$value->path).'/'.$value->folder,array('query' => array('destination' => $cur_path)));
+        $bgcolor = '#ff9600';  
+    }else{
+      $link = l('','fast_gallery/toggle_folder_caption/1/'.
+              str_replace("/","!",$value->path).'/'.$value->folder,array('query' => array('destination' => $cur_path)));
+      $bgcolor = 'white';
+    }
+    $html .= '<div class="clear" style="text-align:left;font-size:10px;margin-top:-10px;background-color:'.$bgcolor.'">'.
+             $link.'</div>';
+    return $html; 
+}
+
+/**
+ * themeing the thumbs. We decide here, if we are going to use the
+ * internal cache or imagecache to create the thumbs
+ */
+function theme_fast_gallery_thumb($path){
+  include_once (drupal_get_path('module', 'fast_gallery') . "/fast_gallery.cache.class.php");
+  $cache = FastGalleryCache :: getInstance();
+  if (variable_get('fast_gallery_ic', '<none>') != '<none>') {
+    $img = theme('imagecache', variable_get('fast_gallery_ic', "image_gallery_200"), $path);
+  } else {
+    $ar_img = explode("/", $path);
+    $name = $ar_img[count($ar_img) - 1];
+    if(!is_null($path)){
+      $cache->createthumb($path, $name, 150, 100, 'jpg');
+      $img = theme('image', $path . '.thumb', '', '', array (/*'width'=>150,'height'=>100*/
+      ), TRUE);
+    }
+  }
+  return $img;
+}
+
+/**
+ * Themeing the output using thickbox
+ */
+
+function theme_fast_gallery($ar_pics, $ar_path) {
+  include_once (drupal_get_path('module', 'fast_gallery') . "/fast_gallery.class.php");
+  include_once (drupal_get_path('module', 'fast_gallery') . "/fast_gallery.cache.class.php");
+  $fg = FastGallery :: getInstance();
+  $cache = FastGalleryCache :: getInstance();
+
+  $output = '';
+  $breadcumb = '';
+  array_shift($ar_path);
+  $path = '';
+
+  $i = 1;
+  foreach ($ar_path as $value) { //settting the breadcrumb
+    $path .= $value . '/';
+    if ($i >= count($ar_path)) {
+      $breadcumb .= '<strong>' . $value . '</strong>';
+    } else {
+      $breadcumb .= l($value, 'fast_gallery/' . $path) . ' ' . htmlentities('»') . ' ';
+    }
+    $i++;
+  }
+  drupal_set_breadcrumb(array (
+    l(t('Gallery'), 'fast_gallery'),
+    $breadcumb
+  ));
+
+  $output .= '<div id="fast_gallery">';
+  $i = 0;
+
+  foreach ($ar_pics as $key => $value) {
+    if ($value->isFolder) {
+
+      //make sure, that the path is being displayed correctly
+      //so that breadcrumbs can be made nicely
+      $ar_tmp = explode("/", $value->path);
+      $ar_tmp2 = explode("/", variable_get('fast_gallery_path_absolut', "files/"));
+      $ar_tmp = array_diff($ar_tmp, $ar_tmp2);
+
+      array_pop($ar_tmp);
+
+      $path = '';
+      foreach ($ar_tmp as $tmp) {
+        $path .= $tmp . '/';
+      }
+
+      if (variable_get('fast_gallery_display_folder', 0)) {
+        $output .= l($value->folder, 'fast_gallery/' . $path, array (
+          'attributes' => array (
+            'class' => 'folder'
+          )
+        )) . '|';
+      } else {
+
+        //decide weather to use imagecache or internal cache
+        if (variable_get('fast_gallery_ic', '<none>') != '<none>') {
+          $img = theme('imagecache', variable_get('fast_gallery_ic', "image_gallery_200"), $value->path);
+        } else {
+          $ar_img = explode("/", $value->path);
+          $name = $ar_img[count($ar_img) - 1];
+          $cache->createthumb($value->path, $name, 150, 100, 'jpg');
+          $img = theme('image', $value->path . '.thumb', '', '', array (/*'width'=>150,'height'=>100*/
+          ), TRUE);
+        }
+        $link = l($img, 'fast_gallery/' . $path, array (
+          'html' => TRUE,
+          'attributes' => array (
+            'class' => 'folder'
+          )
+        ));
+
+        $output .= '<div class="single-image">';
+        $output .= $link .
+        '<div class="image-caption folder-caption">' . $value->folder . '</div>' .
+        '</div>';
+      }
+    } 
+    else {//done displaying the folders -> let's display the images
+      $img_path = '';
+      $exif = $fg->getExif($value->gid);
+      if (variable_get('fast_gallery_ic_big', '<none>') == '<none>') { //we use the original size of the image
+        $img_path = $value->path;
+      } else {
+        $img_path = imagecache_create_url(variable_get('fast_gallery_ic_big', ''), $value->path);
+      }
+      switch (variable_get('fast_gallery_js_framework', 0)) {
+        case 0 :
+          $output .= theme('fast_gallery_thickbox_code', $img_path, $exif, $value);
+          break;
+
+        case 1 :
+          $output .= theme('fast_gallery_lightbox_code', $img_path, $exif, $value);
+          break;
+      }
+
+    }
+  }
+  $output .= '<div class="pager">' . theme('pager', NULL, variable_get('fast_gallery_nr_per_page', 30)) . '</div>';
+  $output .= '</div>';
+
+  return $output;
+}
+
+function fast_gallery_block($op = 'list', $delta = 0, $edit = array()) {
+  if ($op == 'list') {
+    $blocks[0] = array('info' => t('Fast Gallery Random Block'));
+    return $blocks;
+  }
+  else if ($op == 'view') {
+    switch($delta) {
+      case 0:
+        $block = array('subject' => t('Gallery'),
+          'content' => theme('fast_gallery_display_block'));
+        break;
+    }
+    return $block;
+  }
+}
+
+/**
+ * Theme function for the block.
+ */
+function theme_fast_gallery_display_block(){
+  include_once('fast_gallery.class.php');
+  $fg = FastGallery :: getInstance();
+  $pic = $fg->getRandomPicture();
+  $img =theme('fast_gallery_thumb',$pic->path);
+  return l($img,'fast_gallery',array('html'=>TRUE));
+}
+
+/**
+ * This is a callbackfunction
+ * We change the the folderimage here and go back to the page
+ * where we came from
+ */
+function fast_gallery_toggle_folder_image($flag,$img_path,$folder){
+  if(arg(2)){//incase we set a new folderimage -> first set all the others to false
+    $sql = "UPDATE {fast_gallery} SET folderimage = %d " .
+           "WHERE folder = '%s'";
+    $ar = explode("?destination=",arg(4));
+    db_query($sql,0,$ar[0]);
+  }
+  $sql = "UPDATE {fast_gallery} SET folderimage = %d " .
+           "WHERE path = '%s'";
+  db_query($sql,arg(2),str_replace("!","/",arg(3)));
+  drupal_goto(drupal_get_destination());
+}
+/**
+ * setting up the imagecache presets
+ */
+function fast_gallery_set_icpresets() {
+  $preset_thumb = array (
+    'presetname' => 'fast_gallery_thumb',
+
+    
+  );
+
+  imagecache_preset_save($preset_thumb);
+
+  $preset_id = db_last_insert_id('imagecache_preset', 'presetid');
+  $preset_thumb['presetid'] = $preset_id;
+  variable_set("fast_gallery_ic_preset_thumb", $preset_id);
+
+  $ar_action_1 = array (
+    'action' => 'imagecache_scale',
+    'weight' => -10,
+    'presetid' => $preset_id,
+    'module' => 'fast_gallery',
+    'data' => array (
+      'width' => 150,
+      'height' => '',
+      'upscale' => 0,
+
+      
+    ),
+
+    
+  );
+
+  imagecache_action_save($ar_action_1);
+  $ar_action_1 = array (
+    'action' => 'imagecache_crop',
+    'presetid' => $preset_id,
+    'module' => 'fast_gallery',
+    'weight' => 0,
+    'data' => array (
+      'width' => 150,
+      'height' => 100,
+      'xoffset' => 'center',
+      'yoffset' => 'center',
+
+      
+    ),
+
+    
+  );
+  imagecache_action_save($ar_action_1);
+  imagecache_preset_flush($preset_thumb);
+  //===================
+  $preset_big = array (
+    'presetname' => 'fast_gallery_big',
+
+    
+  );
+
+  imagecache_preset_save($preset_big);
+  $preset_id = db_last_insert_id('imagecache_preset', 'presetid');
+  $preset_big['presetid'] = $preset_id;
+  variable_set("fast_gallery_ic_preset_big", $preset_id);
+  $ar_action_1 = array (
+    'action' => 'imagecache_scale',
+    'presetid' => $preset_id,
+    'weight' => -10,
+    'module' => 'fast_gallery',
+    'data' => array (
+      'width' => 800,
+      'height' => '',
+      'upscale' => 0,
+
+      
+    ),
+
+    
+  );
+  imagecache_action_save($ar_action_1);
+
+  $ar_action_1 = array (
+    'action' => 'imagecache_crop',
+    'presetid' => $preset_id,
+    'module' => 'fast_gallery',
+    'weight' => 0,
+    'data' => array (
+      'width' => 800,
+      'height' => 600,
+      'xoffset' => 'center',
+      'yoffset' => 'center',
+
+      
+    ),
+
+    
+  );
+  imagecache_action_save($ar_action_1);
+  imagecache_preset_flush($preset_big);
+  drupal_json("installed");
+}
+
+/**
+ * This function is just out of curiosity to see how
+ * many fast gallery installations there are.
+ */
+function fast_gallery_register() {
+  $server = $_SERVER['SERVER_NAME'] . base_path();
+  $server = str_replace("/", ".-", $server);
+  $url = 'http://www.rapsli.ch/drupal/fg_server/' . $server . '/'.FAST_GALLERY_VERSION;
+  if(variable_get('fast_gallery_register', 0)){
+    drupal_http_request($url);
+  }
+  
+}
+
+  /**
+ * This function is just out of curiosity to see how
+ * many fast gallery installations there are.
+ */
+function fast_gallery_unregister(){
+  $server = $_SERVER['SERVER_NAME'].base_path();
+  $server = str_replace("/",".-",$server);
+  $url = 'http://www.rapsli.ch/drupal/fg_server_unregister/'.$server.'/'.FAST_GALLERY_VERSION;
+  
+  drupal_http_request($url);
+  drupal_json(array (
+    'status' => TRUE,
+    'data' => t('Unregistered from rapsli.ch')
+  ));
+}

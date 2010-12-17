@@ -1,0 +1,35 @@
+/*$Id: fast_gallery.css,v 1.15 2008/09/11 04:42:48 rapsli Exp $*/
+#fast_gallery .folder img{
+	border: 1px;
+	border-style: solid;
+	border-color: #e1ab54;
+}
+
+#fast_gallery .single-image{
+	float:left;
+	margin-left:5px;
+	margin-bottom:50px;
+	height:130px;
+	width:170px;
+	text-align: center;	
+}
+
+#fast_gallery img{
+	border: 2px;
+	border-style: solid;
+	border-color: gray;
+}
+
+#fast_gallery .pager{
+	text-align: center;
+}
+
+#fast_gallery .folder-caption{
+	margin-top:10px;
+	margin-left:3px;
+	font-weight: bold;
+	color: #e1ab54;
+}
+.clear{
+	clear:both;
+}

@@ -1,0 +1,12 @@
+; $Id$
+name = "Fast gallery"
+description = "Creates a really fast gallery based on Thickbox and Imagecache"
+core = 6.x
+package = Other
+dependencies[] = thickbox
+; Information added by drupal.org packaging script on 2008-09-19
+version = "6.x-2.3"
+core = "6.x"
+project = "fast_gallery"
+datestamp = "1221802217"
+
